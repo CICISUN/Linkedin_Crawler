@@ -1,19 +1,27 @@
 __author__ = 'CC'
+import logging
+
+
+logging.getLogger('').handlers = []
+LOG_FILENAME = 'master.log'
+logging.basicConfig(filename='master.log', level=logging.DEBUG)
 
 import urllib2
 import json
-
 from bs4 import BeautifulSoup
-
 from Linkedin_Crawler import linkedin_crawler
 
-
-dummy_firstname='Adam'
-dummy_lastname='Smith'
+firstname='Adam'
+lastname='Smith'
 
 #get soup from crawler
-candidates_url = linkedin_crawler.get_candidate_urls(dummy_firstname, dummy_lastname)
-candidates={}
+candidates_url = linkedin_crawler.get_candidate_urls(firstname, lastname)
+logging.info(firstname +", " + lastname + ' has ' + str(len(candidates_url)) + " search result ")
+
+
+#result containers
+candidates=[]
+links=[]
 headers = { 'User-Agent' : 'Mozilla/5.0' }
 
 
@@ -25,8 +33,15 @@ def get_uid(url):
         return url.split("/pub/")[1]
     else:
         return  "unknown"
-def extract_profiles():
+
+
+'''
+Entity is formatted as a list of complex dictionaries, each dictionary for one candidate
+Link is formatted as a list of simple dictionaries, each dictionary records one to one link
+'''
+
 #extract profiles
+def extract_profiles():
     for i in xrange(len(candidates_url)):
         req = urllib2.Request(candidates_url[i], None, headers)
         profile = urllib2.urlopen(req).read()
@@ -35,8 +50,9 @@ def extract_profiles():
 
         #profile dict
         candidate={}
-        candidate["id"] = get_uid(candidates_url[i])
-        candidate["name"] = dummy_firstname + "," + dummy_lastname
+        candidate_id = get_uid(candidates_url[i])
+        candidate["id"] = candidate_id
+        candidate["name"] = firstname + " ," + lastname
         candidate["url"] = candidates_url[i]
 
         #get headline
@@ -83,8 +99,33 @@ def extract_profiles():
         candidate["friends"] = friends
         candidate["friends_url"] = friends_urls
         candidate["friends_id"] = friend_ids
-        candidates[candidate["id"]] = candidate
+        candidates.append(candidate)
 
-    json_string = json.dumps(candidates)
-    return json_string
+        #creates links
+        for friend in friend_ids:
+            link = {}
+            joint_id = min(friend, candidate_id) + "->" + max(friend, candidate_id)
+            link['id'] = joint_id
+            link['candidate'] = candidate_id
+            link['friend'] = friend
+            links.append(link)
 
+    log_result(candidates)
+    link_data = json.dumps(links)
+    entity_data = json.dumps(candidates)
+    return entity_data, link_data
+
+def log_result(candidates):
+    missing_work = 0
+    missing_description = 0
+    missing_friend = 0
+    for candidate in candidates:
+        if len(candidate['works']) == 0:
+            missing_work+=1
+        if len(candidate['friends']) == 0:
+            missing_friend+=1
+        if candidate['description'] == "" or candidate['description'] is None:
+            missing_description+=1
+    logging.info(firstname +", " + lastname + ' has ' + str(missing_description) + " entries missing description ")
+    logging.info(firstname +", " + lastname + ' has ' + str(missing_work) + " entries missing work experience ")
+    logging.info(firstname +", " + lastname + ' has ' + str(missing_friend) + " entries missing friends ")
